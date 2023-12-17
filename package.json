@@ -1,0 +1,23 @@
+{
+  "name": "ai-repl",
+  "module": "src/main.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "check": "biome check --apply ./src",
+    "build": "bun build src/main.ts --compile --bun --target=bun --outfile=ai-repl"
+  },
+  "dependencies": {
+    "openai": "^4.23.0",
+    "tiktoken": "^1.0.11",
+    "valibot": "^0.24.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.4.1",
+    "bun-types": "latest",
+    "tsx": "^4.6.2"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
