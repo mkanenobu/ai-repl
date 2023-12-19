@@ -15,18 +15,18 @@ export class Evaluator {
   private rl: readline.Interface;
   private openAIClient: OpenAI;
   private config: Config;
-  private history: Array<OpenAI.ChatCompletionMessageParam> = [];
+  private messageHistory: Array<OpenAI.ChatCompletionMessageParam> = [];
 
   private commands: Record<string, () => Promise<void>> = {
     ".help": async () => {
       console.log(HELP);
     },
     ".clear": async () => {
-      this.history = [];
+      this.messageHistory = [];
       console.log("History cleared");
     },
     ".history": async () => {
-      console.log(JSON.stringify(this.history, null, 2));
+      console.log(JSON.stringify(this.messageHistory, null, 2));
     },
     ".config": async () => {
       console.log(this.config);
@@ -76,7 +76,7 @@ export class Evaluator {
       });
     }
 
-    messages.push(...this.history);
+    messages.push(...this.messageHistory);
 
     return messages;
   };
@@ -91,7 +91,7 @@ export class Evaluator {
     };
 
     messages.push(message);
-    this.history.push(message);
+    this.messageHistory.push(message);
 
     const stream = await createChatCompletionStream(this.openAIClient, {
       temperature: this.config.temperature,
@@ -100,8 +100,17 @@ export class Evaluator {
       messages,
     });
 
-    const reader = stream.toReadableStream().getReader();
+    const readableStream = stream.toReadableStream();
+    const reader = readableStream.getReader();
+
+    let aborted = false;
     let buf = "";
+
+    this.rl.on("SIGINT", () => {
+      // Stream はそのまま放置して勝手に閉じるのを待つ
+      aborted = true;
+      stdout.write("^C");
+    });
 
     while (true) {
       const r = await reader.read();
@@ -110,14 +119,14 @@ export class Evaluator {
           new TextDecoder().decode(r.value),
         );
         const content = value.choices.at(0)?.delta.content;
-        if (content) {
+        if (content && !aborted) {
           buf += content;
           stdout.write(content);
         }
       }
 
-      if (r.done) {
-        this.history.push({
+      if (r.done || aborted) {
+        this.messageHistory.push({
           content: buf,
           role: "assistant",
         });
