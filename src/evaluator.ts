@@ -107,7 +107,7 @@ export class Evaluator {
     let buf = "";
 
     this.rl.on("SIGINT", () => {
-      // Stream はそのまま放置して勝手に閉じるのを待つ
+      reader.cancel();
       aborted = true;
       stdout.write("^C");
     });
