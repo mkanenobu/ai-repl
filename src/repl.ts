@@ -29,18 +29,26 @@ export class Repl {
     this.rl
       .on("line", async (line) => {
         this.waitForEvaluate = true;
-        await this.evaluator.evaluateLine(line).finally(() => {
-          this.waitForEvaluate = false;
-        });
+        await this.evaluator
+          .evaluateLine(line)
+          .catch((error) => {
+            console.error("Error while evaluating", error);
+          })
+          .finally(() => {
+            this.waitForEvaluate = false;
+          });
         this.rl.prompt();
       })
       .on("history", async (histories) => {
         this.config.historyPath &&
-          saveHistories(this.config.historyPath, histories);
+          saveHistories(this.config.historyPath, histories).catch((error) => {
+            console.error("Error while saving history", error);
+          });
       })
       .on("SIGINT", () => {
         // Ctrl-C
         if (this.waitForEvaluate) {
+          // 評価中の場合は Evaluator の中でハンドリングする
           return;
         }
 
