@@ -14,8 +14,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.4.1",
-    "bun-types": "latest",
-    "tsx": "^4.6.2"
+    "bun-types": "latest"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
