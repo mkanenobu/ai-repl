@@ -1,21 +1,32 @@
-import { exit, stdout } from "node:process";
+import { exit } from "node:process";
 import type readline from "node:readline/promises";
 import type OpenAI from "openai";
-import { createChatCompletionStream, initOpenAiClient } from "./ai.ts";
+import {
+  createChatCompletionStream,
+  createMessage,
+  initOpenAiClient,
+} from "./openai.ts";
 import type { Config } from "./config.ts";
 import { countTokens } from "./tokenizer.ts";
 
-export const HELP = ` .help     # Show this help
- .clear    # Clear messages stack
- .history  # Show messages stack
- .config   # Show config
- .exit     # Exit`;
+const stdout = Bun.stdout;
+
+export const HELP = [
+  ".help     # Show this help",
+  ".clear    # Clear messages stack",
+  ".history  # Show messages stack",
+  ".config   # Show config",
+  ".exit     # Exit",
+]
+  .map((line) => ` ${line}`)
+  .join("\n");
 
 export class Evaluator {
   private rl: readline.Interface;
   private openAIClient: OpenAI;
   private config: Config;
   private messageHistory: Array<OpenAI.ChatCompletionMessageParam> = [];
+  private systemMessage: OpenAI.ChatCompletionMessageParam | null;
 
   private commands: Record<string, () => Promise<void>> = {
     ".help": async () => {
@@ -41,6 +52,12 @@ export class Evaluator {
     this.rl = params.rl;
     this.config = params.config;
     this.openAIClient = initOpenAiClient({ apiKey: params.config.apiKey });
+    this.systemMessage = params.config.systemContext
+      ? createMessage({
+          content: params.config.systemContext,
+          role: "system",
+        })
+      : null;
   }
 
   public evaluateLine = async (line: string) => {
@@ -65,76 +82,62 @@ export class Evaluator {
     return true;
   };
 
-  private createMessages = (): Array<OpenAI.ChatCompletionMessageParam> => {
-    const messages: OpenAI.ChatCompletionMessageParam[] = [];
-
-    const systemContext = this.config.systemContext;
-    if (systemContext) {
-      messages.push({
-        content: systemContext,
-        role: "system",
-      });
-    }
-
-    messages.push(...this.messageHistory);
-
-    return messages;
-  };
-
   private chatCompletion = async (line: string) => {
-    stdout.write(`Token count: ${countTokens(this.config.model, line)}\n`);
+    Bun.write(
+      stdout,
+      `Token count: ${countTokens(this.config.modelOptions.model, line)}\n`,
+    );
 
-    const messages = this.createMessages();
-    const message: OpenAI.ChatCompletionMessageParam = {
+    const message: OpenAI.ChatCompletionUserMessageParam = {
       content: line,
       role: "user",
     };
+    const messages = [
+      this.systemMessage,
+      ...this.messageHistory,
+      message,
+    ].filter(Boolean) as Array<OpenAI.ChatCompletionMessageParam>;
 
-    messages.push(message);
     this.messageHistory.push(message);
 
     const stream = await createChatCompletionStream(this.openAIClient, {
-      temperature: this.config.temperature,
-      top_p: this.config.top_p,
-      model: this.config.model,
+      model: this.config.modelOptions.model,
+      temperature: this.config.modelOptions.temperature,
+      top_p: this.config.modelOptions.topP,
       messages,
     });
 
-    const readableStream = stream.toReadableStream();
-    const reader = readableStream.getReader();
-
-    let aborted = false;
-    let buf = "";
+    let isAborted = false;
 
     this.rl.on("SIGINT", () => {
-      reader.cancel();
-      aborted = true;
-      stdout.write("^C");
+      // FIXME: 一度途中で止めると、次からのリクエストが connection error になる
+      isAborted = true;
     });
 
-    while (true) {
-      const r = await reader.read();
-      if (r.value) {
-        const value: OpenAI.ChatCompletionChunk = JSON.parse(
-          new TextDecoder().decode(r.value),
-        );
-        const content = value.choices.at(0)?.delta.content;
-        if (content && !aborted) {
-          buf += content;
-          stdout.write(content);
-        }
-      }
+    let buf = "";
 
-      if (r.done || aborted) {
-        this.messageHistory.push({
-          content: buf,
-          role: "assistant",
-        });
-        stdout.write(
-          `\nResponse token count: ${countTokens(this.config.model, buf)}\n`,
-        );
+    for await (const chunk of stream) {
+      if (isAborted) {
         break;
       }
+      const content = chunk.choices.at(0)?.delta.content;
+      if (content) {
+        buf += content;
+        Bun.write(stdout, content);
+      }
     }
+
+    this.messageHistory.push({
+      content: buf,
+      role: "assistant",
+    });
+
+    Bun.write(
+      stdout,
+      `\nResponse token count: ${countTokens(
+        this.config.modelOptions.model,
+        buf,
+      )}\n`,
+    );
   };
 }

@@ -15,3 +15,16 @@ export const createChatCompletionStream = (
     stream: true,
   });
 };
+
+export const createMessage = ({
+  content,
+  role,
+}: {
+  content: string;
+  role: Exclude<OpenAI.ChatCompletionRole, "tool" | "function">;
+}): OpenAI.ChatCompletionMessageParam => {
+  return {
+    content,
+    role,
+  };
+};

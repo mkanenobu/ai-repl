@@ -14,9 +14,11 @@ import fs from "node:fs/promises";
 const configSchema = object({
   apiKey: string(),
   systemContext: optional(string()),
-  model: optional(string(), "gpt-4-1106-preview"),
-  temperature: optional(number([minValue(0.0), maxValue(2.0)]), 0.7),
-  top_p: optional(number([minValue(0.0), maxValue(1.0)]), 1.0),
+  modelOptions: object({
+    model: optional(string(), "gpt-4-1106-preview"),
+    temperature: optional(number([minValue(0.0), maxValue(2.0)]), 0.7),
+    topP: optional(number([minValue(0.0), maxValue(1.0)]), 1.0),
+  }),
   historyPath: optional(string()),
 });
 
